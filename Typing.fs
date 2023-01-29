@@ -72,6 +72,14 @@ let gamma0 = [
     ("+", TyArrow (TyInt, TyArrow (TyInt, TyInt)))
     ("-", TyArrow (TyInt, TyArrow (TyInt, TyInt)))
 ]
+(*
+let rec findInScheme x (Forall (env, ty)) =
+    match ty with
+    | TyName _ -> false
+    | TyArrow (t1, t2) -> findInScheme x (Forall(env,t1)) || findInScheme x (Forall(env,t2))
+    | TyVar ty -> x = ty
+    | TyTuple l -> l |> List.exists (findInScheme x (Forall(env,x)) )
+    | _ -> failwithf"Errore " *)
 
 
 // TODO for exam
@@ -84,13 +92,33 @@ let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
     | Lit (LChar _) -> TyChar, [] 
     | Lit LUnit -> TyUnit, []
 
-    | Var x -> TyInt, []
+    //| Var x -> TyInt, []
           (*let tmp = freevars_scheme_env env
 
           // inst è una funzione che riceve un set tyvar e ty
           let inst2 = inst(Forall(tmp,t))
           failwithf "Sono qui"
 //        let tvs = freevars_ty *)
+    
+    | Var x -> 
+        try
+            let exists_type = fun(t,_) -> t = x
+            match List.find exists_type env with
+            | (_,sc) -> inst sc, []
+        with
+            | _ -> failwithf"Eror"
+
+        (*
+        let env_to_list env = Set.fold (fun l se -> se::l) [] env
+        let resultPick  List.pick (fun elem ->
+                    match elem with
+                    | (s,_) -> s = x
+                    | _ -> None) env_to_list 
+
+        match resultPick with
+            | s -> inst (Forall(tmp,s))
+            | _ -> failwithf "Error"
+        *)
 
     | Let (x, tyo, e1, e2) ->
         let t1, s1 = typeinfer_expr env e1

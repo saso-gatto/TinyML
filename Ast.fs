@@ -24,8 +24,9 @@ let unexpected_error fmt = throw_formatted UnexpectedError fmt
 
 type tyvar = int
 
+// Ty corresponds to the greek letters tao of the notes.
 type ty =
-    | TyName of string
+    | TyName of string      //Type constructors of types such as int, float, etch.
     | TyArrow of ty * ty
     | TyVar of tyvar
     | TyTuple of ty list
@@ -50,7 +51,8 @@ let (|TyString|_|) = (|TyLit|_|) "string"
 let (|TyBool|_|) = (|TyLit|_|) "bool"
 let (|TyUnit|_|) = (|TyLit|_|) "unit"
 
-
+// Declaration of type scheme
+// Forall is like a method which we call to build a scheme whose structure is a Set of type ty.
 type scheme = Forall of tyvar Set * ty
 
 type lit = LInt of int
@@ -62,7 +64,7 @@ type lit = LInt of int
 
 type binding = bool * string * ty option * expr    // (is_recursive, id, optional_type_annotation, expression)
 
-
+// Declaration of expression
 and expr = 
     | Lit of lit
     | Lambda of string * ty option * expr
