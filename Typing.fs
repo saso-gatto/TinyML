@@ -49,8 +49,15 @@ let rec unify (t1 : ty) (t2 : ty) : subst =
     | _ -> type_error "cannot unify types %O and %O" t1 t2
 
 // TODO implement this
-let apply_subst (t : ty) (s : subst) : ty = t
-
+let rec apply_subst (s : subst) (t : ty): ty =
+    match t with
+    | TyName _ -> t
+    | TyArrow (t1, t2) -> TyArrow (apply_subst s t1, apply_subst s t2)
+    | TyVar tv ->
+        try
+            let _, t1 = List.find (fun (tv1, _) -> tv1 = tv) s in t1
+        with _KeyNotFoundException -> t
+    | TyTuple ts -> TyTuple (List.map (apply_subst s) ts)
 
 let rec freevars_ty t =
     match t with
@@ -72,15 +79,11 @@ let gamma0 = [
     ("+", TyArrow (TyInt, TyArrow (TyInt, TyInt)))
     ("-", TyArrow (TyInt, TyArrow (TyInt, TyInt)))
 ]
-(*
-let rec findInScheme x (Forall (env, ty)) =
-    match ty with
-    | TyName _ -> false
-    | TyArrow (t1, t2) -> findInScheme x (Forall(env,t1)) || findInScheme x (Forall(env,t2))
-    | TyVar ty -> x = ty
-    | TyTuple l -> l |> List.exists (findInScheme x (Forall(env,x)) )
-    | _ -> failwithf"Errore " *)
 
+let check_type t:ty = 
+    match t with
+        | TyInt -> TyInt
+        | TyFloat -> TyFloat
 
 // TODO for exam
 let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
@@ -97,9 +100,9 @@ let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
         try
             let exists_type = fun(t,_) -> t = x
             match List.find exists_type env with //x belongs to environment
-            | (_,sc) -> inst sc, [] // we have just a vartia
+            | (_,sc) -> inst sc, [] // [] is the substitution,
         with
-            | _ -> failwithf"Error"
+            | _ -> failwithf"Error on Var X"
 
         (*
     | Var x when List.exists (fun (name_variable, _) -> name_variable = x) env ->
@@ -107,22 +110,24 @@ let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
         inst schema, []
         *)
     
-    | Lambda (x, t1, e) -> failwithf "Errore lambda"
+    | Lambda (x, tyo, e) -> 
+        let temp_x = TyVar 1
+        let te,se = typeinfer_expr ((x, Forall(Set.empty, temp_x)) :: env  ) e
+        let t1 = apply_subst se temp_x
+        match tyo with 
+        | Some (t1_user) when t1_user <> t1 -> type_error "Il tipo previsto di questa espressione è %s, ma quello effettivo è %s" (pretty_ty t1_user) (pretty_ty t1)
+        | _ -> TyArrow (t1 , te), se
+        
 
     // Plus inference rule; final_type match is taken by type checking.
     | BinOp (e1, ("+" | "-" | "/" | "%" | "*" as op), e2) ->
         let t1, s1 = typeinfer_expr env e1
-        let s2 = unify t1 t1
+        let s2 = unify t1 TyInt
+
         let t2, s3 = typeinfer_expr env e2
-        let s4 = unify t2 t2
-        let final_type = match t1, t2 with
-                            | TyInt, TyInt -> TyInt
-                            | TyFloat, TyFloat -> TyFloat
-                            | TyInt, TyFloat
-                            | TyFloat, TyInt -> TyFloat
-                            | _ -> type_error "binary operator expects two int operands, but got %s %s %s" (pretty_ty t1) op (pretty_ty t2)
-        
-        final_type, List.fold ( fun z1 z2 -> compose_subst z1 z2 ) [] [s1; s2; s3; s4]
+        let s4 = unify t2 TyInt
+
+        TyInt, List.fold ( fun z1 z2 -> compose_subst z1 z2 ) [] [s1; s2; s3; s4]
 
 
     | Let (x, tyo, e1, e2) -> // Check if tyo is equal to t2
