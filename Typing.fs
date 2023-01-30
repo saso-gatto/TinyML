@@ -103,29 +103,27 @@ let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
     | Var x -> 
         try
             let exists_type = fun(t,_) -> t = x
-            match List.find exists_type env with
-            | (_,sc) -> inst sc, []
+            match List.find exists_type env with //x belongs to environment
+            | (_,sc) -> inst sc, [] // we have just a vartia
         with
-            | _ -> failwithf"Eror"
+            | _ -> failwithf"Error"
 
         (*
-        let env_to_list env = Set.fold (fun l se -> se::l) [] env
-        let resultPick  List.pick (fun elem ->
-                    match elem with
-                    | (s,_) -> s = x
-                    | _ -> None) env_to_list 
-
-        match resultPick with
-            | s -> inst (Forall(tmp,s))
-            | _ -> failwithf "Error"
+    | Var x when List.exists (fun (name_variable, _) -> name_variable = x) env ->
+        let _, schema = List.find (fun (name_variable, _) -> name_variable = x) env
+        inst schema, []
         *)
 
-    | Let (x, tyo, e1, e2) ->
+    | Let (x, tyo, e1, e2) -> // Check if tyo is equal to t2
         let t1, s1 = typeinfer_expr env e1
         let tvs = freevars_ty t1 - freevars_scheme_env env
         let sch = Forall (tvs, t1)
         let t2, s2 = typeinfer_expr ((x, sch) :: env) e2
-        t2, compose_subst s2 s1
+        //t2, compose_subst s2 s1
+        match tyo with
+        | Some(type_user) when type_user <> t2 -> type_error "Il tipo previsto di questa espressione è %s, ma quello effettivo è %s" (pretty_ty type_user) (pretty_ty t2)
+        | _ -> t2, compose_subst s2 s1
+
     | _ -> failwithf "not implemented"
 
 // type checker //
