@@ -92,14 +92,7 @@ let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
     | Lit (LChar _) -> TyChar, [] 
     | Lit LUnit -> TyUnit, []
 
-    //| Var x -> TyInt, []
-          (*let tmp = freevars_scheme_env env
 
-          // inst è una funzione che riceve un set tyvar e ty
-          let inst2 = inst(Forall(tmp,t))
-          failwithf "Sono qui"
-//        let tvs = freevars_ty *)
-    
     | Var x -> 
         try
             let exists_type = fun(t,_) -> t = x
@@ -113,6 +106,24 @@ let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
         let _, schema = List.find (fun (name_variable, _) -> name_variable = x) env
         inst schema, []
         *)
+    
+    | Lambda (x, t1, e) -> failwithf "Errore lambda"
+
+    // Plus inference rule; final_type match is taken by type checking.
+    | BinOp (e1, ("+" | "-" | "/" | "%" | "*" as op), e2) ->
+        let t1, s1 = typeinfer_expr env e1
+        let s2 = unify t1 t1
+        let t2, s3 = typeinfer_expr env e2
+        let s4 = unify t2 t2
+        let final_type = match t1, t2 with
+                            | TyInt, TyInt -> TyInt
+                            | TyFloat, TyFloat -> TyFloat
+                            | TyInt, TyFloat
+                            | TyFloat, TyInt -> TyFloat
+                            | _ -> type_error "binary operator expects two int operands, but got %s %s %s" (pretty_ty t1) op (pretty_ty t2)
+        
+        final_type, List.fold ( fun z1 z2 -> compose_subst z1 z2 ) [] [s1; s2; s3; s4]
+
 
     | Let (x, tyo, e1, e2) -> // Check if tyo is equal to t2
         let t1, s1 = typeinfer_expr env e1
