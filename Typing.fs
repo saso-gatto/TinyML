@@ -11,13 +11,53 @@ let type_error fmt = throw_formatted TypeError fmt
 
 let mutable var_counter = 0
 
+
+let get_fresh_variable = 
+    var_counter <- var_counter + 1
+    TyVar var_counter
+
 type subst = (tyvar * ty) list
 
-// TODO implement this
-let compose_subst (s1 : subst) (s2 : subst) : subst = s1 @ s2
- 
-let refresh (t:tyvar): tyvar = t+1
 
+let rec apply_subst (s : subst) (t : ty): ty =
+    match t with
+    | TyName _ -> t
+    | TyArrow (t1, t2) -> TyArrow (apply_subst s t1, apply_subst s t2)
+    | TyVar tv ->
+        try
+            let _, t1 = List.find (fun (tv1, _) -> tv1 = tv) s in t1
+        with _KeyNotFoundException -> t
+    | TyTuple ts -> TyTuple (List.map (apply_subst s) ts)
+
+let compose_subst (s1 : subst) (s2 : subst) : subst =
+    let s1_applied = List.map (fun (y, x) -> (y, apply_subst s2 x)) s1
+    let composed = List.append s1_applied s2
+    List.distinctBy fst composed
+
+    (*
+let replace var =
+    match var with
+    | var -> if var<> TyVar then var
+    | var -> remove list var 
+    list::new var
+
+let inside_subs t: scheme env =
+    match t with
+    | Forall(vars,t) -> Forall(var replace t)
+
+
+let apply_subst_to_env (subst: subst) (env : scheme env) : env =
+    List.map( fun (s, y) -> s inside_subs y) env *)
+
+let apply_susbs_to_env (subst: subst) (env : scheme env) : scheme env =
+    List. map (fun (name, Forall (tvs,t)) -> 
+        let temp = apply_subst subst t
+        (name, Forall (tvs, temp))
+       ) env
+    
+
+let refresh (t:tyvar): tyvar = t+1
+                                            
 let rec re (powerset : Set<tyvar>, t :ty) : ty =
     match t with
     | TyName _ -> t
@@ -25,8 +65,7 @@ let rec re (powerset : Set<tyvar>, t :ty) : ty =
         if not (Set.contains tv powerset) then 
             t 
         else 
-            var_counter <- var_counter+1
-            TyVar(var_counter)
+            get_fresh_variable
 
     | TyArrow (t1, t2) -> TyArrow (re (powerset, t1), re (powerset, t2))
     | TyTuple ts -> TyTuple (List.map (fun x -> re (powerset, x)) ts)
@@ -48,16 +87,7 @@ let rec unify (t1 : ty) (t2 : ty) : subst =
     
     | _ -> type_error "cannot unify types %O and %O" t1 t2
 
-// TODO implement this
-let rec apply_subst (s : subst) (t : ty): ty =
-    match t with
-    | TyName _ -> t
-    | TyArrow (t1, t2) -> TyArrow (apply_subst s t1, apply_subst s t2)
-    | TyVar tv ->
-        try
-            let _, t1 = List.find (fun (tv1, _) -> tv1 = tv) s in t1
-        with _KeyNotFoundException -> t
-    | TyTuple ts -> TyTuple (List.map (apply_subst s) ts)
+
 
 let rec freevars_ty t =
     match t with
@@ -104,32 +134,85 @@ let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
         with
             | _ -> failwithf"Error on Var X"
 
-        (*
-    | Var x when List.exists (fun (name_variable, _) -> name_variable = x) env ->
-        let _, schema = List.find (fun (name_variable, _) -> name_variable = x) env
-        inst schema, []
-        *)
+    | Lambda (x, None, e) ->
+        let ty = get_fresh_variable
+        let te,se = typeinfer_expr ((x, Forall(Set.empty, ty)) :: env  ) e
+        let t1 = apply_subst se ty
+        TyArrow (t1, te), se
     
-    | Lambda (x, tyo, e) -> 
-        let temp_x = TyVar 1
-        let te,se = typeinfer_expr ((x, Forall(Set.empty, temp_x)) :: env  ) e
-        let t1 = apply_subst se temp_x
-        match tyo with 
-        | Some (t1_user) when t1_user <> t1 -> type_error "Il tipo previsto di questa espressione è %s, ma quello effettivo è %s" (pretty_ty t1_user) (pretty_ty t1)
-        | _ -> TyArrow (t1 , te), se
+    | Lambda (x, Some ty, e) ->
+        let te,se = typeinfer_expr ((x, Forall(Set.empty, ty)) :: env  ) e
+        let t1 = apply_subst se ty
+        TyArrow (t1, te), se
+
         
+    | App (e1, e2) ->
+        let t1,s1 = typeinfer_expr env e1
+
+        let env = apply_susbs_to_env s1 env
+
+        let t2, s2 = typeinfer_expr env e2
+
+        let fresh_var = get_fresh_variable
+
+        let s3 = unify t1 (TyArrow (t2, fresh_var))
+        
+        let t = apply_subst s3 fresh_var
+        let s = compose_subst s3 s2
+
+        t,s
+
+
+    | IfThenElse (e1, e2, e3o) ->
+        let t1, s1 = typeinfer_expr env e1
+        let s2 = unify t1 TyBool
+        let s3 = compose_subst s1 s2
+
+        let env = apply_susbs_to_env s2 env
+
+        let t2,s4 = typeinfer_expr env e2  
+        let s5 = compose_subst s4 s3
+       
+        let env = apply_susbs_to_env s2 env
+
+        let t3,s6 = match e3o with
+            | Some (e) -> typeinfer_expr env e
+            | None -> t2, s5    //Type of the expression after the then and the subset s5
+
+        let s7 = compose_subst s6 s5
+        let s8 = unify (apply_subst s7 t2) (apply_subst s7 t3)
+
+        let t = apply_subst s8 t2
+
+        t,s8
+
+
 
     // Plus inference rule; final_type match is taken by type checking.
     | BinOp (e1, ("+" | "-" | "/" | "%" | "*" as op), e2) ->
         let t1, s1 = typeinfer_expr env e1
         let s2 = unify t1 TyInt
 
+        let env = apply_susbs_to_env s2 env
+
         let t2, s3 = typeinfer_expr env e2
         let s4 = unify t2 TyInt
 
         TyInt, List.fold ( fun z1 z2 -> compose_subst z1 z2 ) [] [s1; s2; s3; s4]
+    
+    // Plus inference rule; final_type match is taken by type checking.
+    | BinOp (e1, ("<" | "<=" | ">" | ">=" | "=" | "<>" as op), e2) ->
+        let t1, s1 = typeinfer_expr env e1
+        let s2 = unify t1 TyInt
 
+        let env = apply_susbs_to_env s2 env
 
+        let t2, s3 = typeinfer_expr env e2
+        let s4 = unify t2 TyInt
+
+        TyBool, List.fold ( fun z1 z2 -> compose_subst z1 z2 ) [] [s1; s2; s3; s4]
+    
+    
     | Let (x, tyo, e1, e2) -> // Check if tyo is equal to t2
         let t1, s1 = typeinfer_expr env e1
         let tvs = freevars_ty t1 - freevars_scheme_env env
@@ -139,6 +222,10 @@ let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
         match tyo with
         | Some(type_user) when type_user <> t2 -> type_error "Il tipo previsto di questa espressione è %s, ma quello effettivo è %s" (pretty_ty type_user) (pretty_ty t2)
         | _ -> t2, compose_subst s2 s1
+    
+    | Tuple es ->
+        
+        failwithf "not implemented"
 
     | _ -> failwithf "not implemented"
 

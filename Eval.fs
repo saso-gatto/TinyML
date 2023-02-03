@@ -58,6 +58,12 @@ let rec eval_expr (env : value env) (e : expr) : value =
     | BinOp (e1, "*", e2) -> binop ( * ) ( * ) env e1 e2
     | BinOp (e1, "/", e2) -> binop ( / ) ( / ) env e1 e2
     | BinOp (e1, "%", e2) -> binop ( % ) ( % ) env e1 e2
+    | BinOp (e1, ">", e2) -> binop_bool (>) (>) env e1 e2
+    | BinOp (e1, "<", e2) -> binop_bool (<) (<) env e1 e2
+    | BinOp (e1, "=", e2) -> binop_bool (=) (=) env e1 e2
+    | BinOp (e1, ">=", e2) -> binop_bool (>=) (>=) env e1 e2
+    | BinOp (e1, "<=", e2) -> binop_bool (<=) (<=) env e1 e2
+
     // TODO: implement other binary ops
 
 
@@ -71,4 +77,14 @@ and binop op_int op_float env e1 e2 =
     | VLit (LFloat x), VLit (LFloat y) -> VLit (LFloat (op_float x y))
     | VLit (LInt x), VLit (LFloat y) -> VLit (LFloat (op_float (float x) y))
     | VLit (LFloat x), VLit (LInt y) -> VLit (LFloat (op_float x (float y)))
+    | _ -> unexpected_error "eval_expr: illegal operands in binary operator (+): %s + %s" (pretty_value v1) (pretty_value v2)
+
+and binop_bool op_int op_float env e1 e2 =
+    let v1 = eval_expr env e1
+    let v2 = eval_expr env e2
+    match v1, v2 with
+    | VLit (LInt x), VLit (LInt y) -> VLit (LBool (op_int x y))
+    | VLit (LFloat x), VLit (LFloat y) -> VLit (LBool (op_float x y))
+    | VLit (LInt x), VLit (LFloat y) -> VLit (LBool (op_float (float x) y))
+    | VLit (LFloat x), VLit (LInt y) -> VLit (LBool (op_float x (float y)))
     | _ -> unexpected_error "eval_expr: illegal operands in binary operator (+): %s + %s" (pretty_value v1) (pretty_value v2)
