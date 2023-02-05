@@ -10,9 +10,10 @@ open Ast
 let type_error fmt = throw_formatted TypeError fmt
 
 let mutable var_counter = 0
+let last_free_var = 0
 
 
-let get_fresh_variable = 
+let get_fresh_variable () = 
     var_counter <- var_counter + 1
     TyVar var_counter
 
@@ -57,7 +58,8 @@ let apply_susbs_to_env (subst: subst) (env : scheme env) : scheme env =
     
 
 let refresh (t:tyvar): tyvar = t+1
-                                            
+ 
+ (*
 let rec re (powerset : Set<tyvar>, t :ty) : ty =
     match t with
     | TyName _ -> t
@@ -65,29 +67,15 @@ let rec re (powerset : Set<tyvar>, t :ty) : ty =
         if not (Set.contains tv powerset) then 
             t 
         else 
-            get_fresh_variable
+            get_fresh_variable ()
 
     | TyArrow (t1, t2) -> TyArrow (re (powerset, t1), re (powerset, t2))
     | TyTuple ts -> TyTuple (List.map (fun x -> re (powerset, x)) ts)
-    
-let inst (Forall(tvs,t)): ty = re (tvs, t)
+*)
 
-// TODO implement this
-let rec unify (t1 : ty) (t2 : ty) : subst = 
-    match (t1,t2) with
-    | TyName s1, TyName s2 when s1 = s2 -> []
-
-    | TyVar tv,t
-    | t, TyVar tv -> [tv,t]
-
-    | TyArrow(t1,t2), TyArrow(t3,t4) -> compose_subst (unify t1 t3) (unify t2 t4)
-
-    | TyTuple ts1, TyTuple ts2 when List.length ts1 = List.length ts2 ->
-        List.fold (fun s (t1,t2) -> compose_subst s (unify t1 t2)) [] (List.zip ts1 ts2)
-    
-    | _ -> type_error "cannot unify types %O and %O" t1 t2
-
-
+(* get the set of free-type-variables in the type
+The ftv of a type are all the type vars appearing on the type.
+*)
 
 let rec freevars_ty t =
     match t with
@@ -100,6 +88,34 @@ let freevars_scheme (Forall (tvs, t)) = freevars_ty t - tvs
 
 let freevars_scheme_env env =
     List.fold (fun r (_, sch) -> r + freevars_scheme sch) Set.empty env
+
+let inst (Forall (tvs, t)) : ty =
+    let free_vars = freevars_ty t
+    let vars_to_be_refresh = Set.intersect free_vars tvs
+    let sub =
+        vars_to_be_refresh
+        |> Set.toList
+        |> List.map (fun v -> (v, (get_fresh_variable())))
+    apply_subst sub t
+
+// TODO implement this
+let rec unify (t1 : ty) (t2 : ty) : subst = 
+    match (t1,t2) with
+    | TyName s1, TyName s2 when s1 = s2 -> []
+
+    | TyVar tv,t
+    | t, TyVar tv -> [tv,t]
+
+    | TyArrow(t1,t2), TyArrow(t3,t4) -> 
+        let s = unify t1 t3
+        in s @ (unify (apply_subst s t2) (apply_subst s t4)) //s is used to concatenate two lists
+        //compose_subst (unify t1 t3) (unify t2 t4)
+
+    | TyTuple ts1, TyTuple ts2 when List.length ts1 = List.length ts2 ->
+        List.fold (fun s (t1,t2) -> compose_subst s (unify t1 t2)) [] (List.zip ts1 ts2)
+    
+    | _ -> type_error "cannot unify types %O and %O" t1 t2
+
 
 
 // type inference
@@ -135,7 +151,7 @@ let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
             | _ -> failwithf"Error on Var X"
 
     | Lambda (x, None, e) ->
-        let ty = get_fresh_variable
+        let ty = get_fresh_variable()
         let te,se = typeinfer_expr ((x, Forall(Set.empty, ty)) :: env  ) e
         let t1 = apply_subst se ty
         TyArrow (t1, te), se
@@ -153,40 +169,39 @@ let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
 
         let t2, s2 = typeinfer_expr env e2
 
-        let fresh_var = get_fresh_variable
+        let fresh_var = get_fresh_variable ()
+        let t1 = apply_subst s2 t1
 
-        let s3 = unify t1 (TyArrow (t2, fresh_var))
+        let s3 = unify t1 (TyArrow(t2,fresh_var))
         
         let t = apply_subst s3 fresh_var
-        let s = compose_subst s3 s2
+        let s_temp = compose_subst s3 s2
+        let s = compose_subst s_temp s1
 
-        t,s
+        (apply_subst s3 fresh_var),s
 
 
     | IfThenElse (e1, e2, e3o) ->
         let t1, s1 = typeinfer_expr env e1
-        let s2 = unify t1 TyBool
-        let s3 = compose_subst s1 s2
+        let s3 = compose_subst s1 (unify t1 TyBool)
 
-        let env = apply_susbs_to_env s2 env
+        let env = apply_susbs_to_env s3 env
 
         let t2,s4 = typeinfer_expr env e2  
         let s5 = compose_subst s4 s3
        
-        let env = apply_susbs_to_env s2 env
-
-        let t3,s6 = match e3o with
-            | Some (e) -> typeinfer_expr env e
-            | None -> t2, s5    //Type of the expression after the then and the subset s5
-
-        let s7 = compose_subst s6 s5
-        let s8 = unify (apply_subst s7 t2) (apply_subst s7 t3)
-
-        let t = apply_subst s8 t2
-
-        t,s8
-
-
+        match e3o with
+        | None -> 
+            if t2 <> TyUnit then type_error "if-then without else requires unit type on then branch, but got %s" (pretty_ty t2)
+            TyUnit, s5
+                    
+        | Some e3 ->
+            let env = apply_susbs_to_env s5 env
+            let t3, s6 = typeinfer_expr env e3
+            //let s7 = compose_subst s5 s6
+            //if t2 <> t3 then type_error "type mismatch in if-then-else:  then branch has type %s and is different from else branch type %s" (pretty_ty t2) (pretty_ty t3)
+            let s8 = unify t2 t3
+            t3,s8
 
     // Plus inference rule; final_type match is taken by type checking.
     | BinOp (e1, ("+" | "-" | "/" | "%" | "*" as op), e2) ->
@@ -212,22 +227,45 @@ let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
 
         TyBool, List.fold ( fun z1 z2 -> compose_subst z1 z2 ) [] [s1; s2; s3; s4]
     
-    
-    | Let (x, tyo, e1, e2) -> // Check if tyo is equal to t2
+    | Let (x, tyo, e1, e2) ->
         let t1, s1 = typeinfer_expr env e1
+
         let tvs = freevars_ty t1 - freevars_scheme_env env
         let sch = Forall (tvs, t1)
-        let t2, s2 = typeinfer_expr ((x, sch) :: env) e2
-        //t2, compose_subst s2 s1
-        match tyo with
-        | Some(type_user) when type_user <> t2 -> type_error "Il tipo previsto di questa espressione è %s, ma quello effettivo è %s" (pretty_ty type_user) (pretty_ty t2)
-        | _ -> t2, compose_subst s2 s1
+
+        let env2 = apply_susbs_to_env s1 ((x,sch)::env)
+        let t2, s2 =typeinfer_expr env2 e2
+        t2, compose_subst s2 s1
     
+    | LetRec (f, Some tf, e1, e2) ->
+        //let env0 = (f, tf) :: env
+        //let t1 = typeinfer_expr env0 e1
+        //match t1 with
+        //| TyArrow _ -> ()
+        failwithf "Error on let rec"
+
+    // The method fold starts with an empty set
+    // At each iteration, it requires Theta (i-1), and the current expression
+    // It uses the method typeperf_expr to infer the type ti and the subst si.
+    // The output has to be a t1*..*tn of types and the substs n.
+
     | Tuple es ->
         
-        failwithf "not implemented"
+        let final_ts, final_subst = List.fold (fun ((ts, s):ty list * subst) (e : expr) ->
+                let current_env = apply_susbs_to_env s env 
+                let ti, si = typeinfer_expr current_env e
+                let current_sub = compose_subst si s in ti::ts, current_sub) ([], []) es
+        TyTuple(List.rev(final_ts)), final_subst
 
-    | _ -> failwithf "not implemented"
+        //failwithf "TyTuple error"
+
+    (*
+        current_sub = []
+        t = []
+        for (i = 1; i<n; i++)
+            ti,si = typeinfer_expr(current_sub,e[i])
+            l.append(ti)
+            current_sub = compose_subst (current_sub, si) *)
 
 // type checker //
     

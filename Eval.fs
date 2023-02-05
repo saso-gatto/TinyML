@@ -53,6 +53,9 @@ let rec eval_expr (env : value env) (e : expr) : value =
         | _ -> unexpected_error "eval_expr: expected closure in rec binding but got: %s" (pretty_value v1)
         // TODO finish this implementation
 
+    | Tuple es ->
+        VTuple (List.map (eval_expr env) es) 
+
     | BinOp (e1, "+", e2) -> binop (+) (+) env e1 e2
     | BinOp (e1, "-", e2) -> binop (-) (-) env e1 e2
     | BinOp (e1, "*", e2) -> binop ( * ) ( * ) env e1 e2
