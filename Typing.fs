@@ -59,19 +59,6 @@ let apply_susbs_to_env (subst: subst) (env : scheme env) : scheme env =
 
 let refresh (t:tyvar): tyvar = t+1
  
- (*
-let rec re (powerset : Set<tyvar>, t :ty) : ty =
-    match t with
-    | TyName _ -> t
-    | TyVar tv -> 
-        if not (Set.contains tv powerset) then 
-            t 
-        else 
-            get_fresh_variable ()
-
-    | TyArrow (t1, t2) -> TyArrow (re (powerset, t1), re (powerset, t2))
-    | TyTuple ts -> TyTuple (List.map (fun x -> re (powerset, x)) ts)
-*)
 
 (* get the set of free-type-variables in the type
 The ftv of a type are all the type vars appearing on the type.
@@ -98,6 +85,10 @@ let inst (Forall (tvs, t)) : ty =
         |> List.map (fun v -> (v, (get_fresh_variable())))
     apply_subst sub t
 
+let generalization(env: scheme env) (t:ty) : scheme =
+    let tvs = Set.difference(freevars_ty t) (freevars_scheme_env env)
+    Forall(tvs,t) 
+    
 // TODO implement this
 let rec unify (t1 : ty) (t2 : ty) : subst = 
     match (t1,t2) with
@@ -148,7 +139,9 @@ let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
             match List.find exists_type env with //x belongs to environment
             | (_,sc) -> inst sc, [] // [] is the substitution,
         with
-            | _ -> failwithf"Error on Var X"
+            | _ -> failwithf"Error on Var X" 
+
+    
 
     | Lambda (x, None, e) ->
         let ty = get_fresh_variable()
@@ -198,10 +191,10 @@ let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
         | Some e3 ->
             let env = apply_susbs_to_env s5 env
             let t3, s6 = typeinfer_expr env e3
-            //let s7 = compose_subst s5 s6
+            let s7 = compose_subst s5 s6
             //if t2 <> t3 then type_error "type mismatch in if-then-else:  then branch has type %s and is different from else branch type %s" (pretty_ty t2) (pretty_ty t3)
-            let s8 = unify t2 t3
-            t3,s8
+            let s8 = unify (apply_subst s7 t2) (apply_subst s7 t3)
+            t3, compose_subst s8 s7
 
     // Plus inference rule; final_type match is taken by type checking.
     | BinOp (e1, ("+" | "-" | "/" | "%" | "*" as op), e2) ->
@@ -229,20 +222,26 @@ let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
     
     | Let (x, tyo, e1, e2) ->
         let t1, s1 = typeinfer_expr env e1
-
-        let tvs = freevars_ty t1 - freevars_scheme_env env
-        let sch = Forall (tvs, t1)
-
+        let sch = generalization env (apply_subst s1 t1)
         let env2 = apply_susbs_to_env s1 ((x,sch)::env)
         let t2, s2 =typeinfer_expr env2 e2
-        t2, compose_subst s2 s1
+        match tyo with
+        | Some (t2_user) when t2_user <> t2 -> type_error "The expected type of this expression is %s but got instead %s"(pretty_ty t2_user) (pretty_ty t2)
+        | _ -> t2, compose_subst s2 s1
     
-    | LetRec (f, Some tf, e1, e2) ->
-        //let env0 = (f, tf) :: env
-        //let t1 = typeinfer_expr env0 e1
-        //match t1 with
-        //| TyArrow _ -> ()
-        failwithf "Error on let rec"
+    
+    |LetRec (f ,tyo, e1, e2) ->
+        let fresh_var = get_fresh_variable()
+        let t1,s1  = typeinfer_expr ((f, Forall(Set.empty, fresh_var))::env) e1
+        match tyo with
+        | Some (tyo) when t1 <> tyo -> type_error "let rec type mismatch: expected %s, but got %s" (pretty_ty tyo) (pretty_ty t1)
+        | _ -> 
+            let sch = generalization env (apply_subst s1 t1)
+            let current_env = apply_susbs_to_env s1 env
+
+            let t2,s2 = typeinfer_expr ((f,sch)::current_env) e2
+            t2,s2 
+
 
     // The method fold starts with an empty set
     // At each iteration, it requires Theta (i-1), and the current expression
