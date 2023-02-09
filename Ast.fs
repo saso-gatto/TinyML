@@ -139,7 +139,21 @@ let rec pretty_expr e =
     | Lambda (x, Some t, e) -> sprintf "fun (%s : %s) -> %s" x (pretty_ty t) (pretty_expr e)
     
     // TODO pattern-match sub-application cases
-    | App (e1, e2) -> sprintf "%s %s" (pretty_expr e1) (pretty_expr e2)
+    //| App (e1, e2) -> sprintf "%s %s" (pretty_expr e1) (pretty_expr e2)
+    //Var is already a string so return just it
+    | App (e1, e2) ->
+        let expression1 =
+            match e1 with
+            | Var _ //Var is already a string
+            | Lit _ -> pretty_expr e1
+            | _ -> sprintf "(%s)" (pretty_expr e1)
+        let expression2 =
+            match e2 with
+            | Var _ 
+            | Lit _ -> pretty_expr e2
+            | _ -> sprintf "(%s)" (pretty_expr e2)
+        sprintf "%s %s" expression1 expression2
+
 
     | Var x -> x
 

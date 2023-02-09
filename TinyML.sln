@@ -1,9 +1,14 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 16
-VisualStudioVersion = 16.0.31702.278
+# Visual Studio Version 17
+VisualStudioVersion = 17.4.33205.214
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "TinyML", "TinyML.fsproj", "{2BD7C40F-1BA7-4282-864F-C3B685A22538}"
+EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "TinyML.Test", "..\TinyML.Test\TinyML.Test.fsproj", "{F1BC9B94-4A29-4C19-899D-BA2EB480C751}"
+	ProjectSection(ProjectDependencies) = postProject
+		{2BD7C40F-1BA7-4282-864F-C3B685A22538} = {2BD7C40F-1BA7-4282-864F-C3B685A22538}
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,6 +26,14 @@ Global
 		{2BD7C40F-1BA7-4282-864F-C3B685A22538}.Release Interactive|Any CPU.Build.0 = Release Interactive|Any CPU
 		{2BD7C40F-1BA7-4282-864F-C3B685A22538}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{2BD7C40F-1BA7-4282-864F-C3B685A22538}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F1BC9B94-4A29-4C19-899D-BA2EB480C751}.Debug Interactive|Any CPU.ActiveCfg = Debug|Any CPU
+		{F1BC9B94-4A29-4C19-899D-BA2EB480C751}.Debug Interactive|Any CPU.Build.0 = Debug|Any CPU
+		{F1BC9B94-4A29-4C19-899D-BA2EB480C751}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F1BC9B94-4A29-4C19-899D-BA2EB480C751}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F1BC9B94-4A29-4C19-899D-BA2EB480C751}.Release Interactive|Any CPU.ActiveCfg = Release|Any CPU
+		{F1BC9B94-4A29-4C19-899D-BA2EB480C751}.Release Interactive|Any CPU.Build.0 = Release|Any CPU
+		{F1BC9B94-4A29-4C19-899D-BA2EB480C751}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F1BC9B94-4A29-4C19-899D-BA2EB480C751}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

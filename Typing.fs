@@ -12,6 +12,9 @@ let type_error fmt = throw_formatted TypeError fmt
 let mutable var_counter = 0
 let last_free_var = 0
 
+let reset_fresh_variable () =
+    var_counter <- 0
+    TyVar var_counter
 
 let get_fresh_variable () = 
     var_counter <- var_counter + 1
@@ -115,12 +118,33 @@ let rec unify (t1 : ty) (t2 : ty) : subst =
 let gamma0 = [
     ("+", TyArrow (TyInt, TyArrow (TyInt, TyInt)))
     ("-", TyArrow (TyInt, TyArrow (TyInt, TyInt)))
+    ("*", TyArrow (TyInt, TyArrow (TyInt, TyInt)))
+    ("/", TyArrow (TyInt, TyArrow (TyInt, TyInt)))
+    ("%", TyArrow (TyInt, TyArrow (TyInt, TyInt)))
+    ("<", TyArrow (TyInt, TyArrow (TyInt, TyBool)))
+    (">", TyArrow (TyInt, TyArrow (TyInt, TyBool)))
+    ("<=", TyArrow (TyInt, TyArrow (TyInt, TyBool)))
+    ("=", TyArrow (TyInt, TyArrow (TyInt, TyBool)))
+    (">=", TyArrow (TyInt, TyArrow (TyInt, TyBool)))
+    ("<>", TyArrow (TyInt, TyArrow (TyInt, TyBool)))
+
+    ("and", TyArrow (TyBool, TyArrow(TyBool, TyBool)))
+    ("or", TyArrow (TyBool, TyArrow(TyBool, TyBool)))
+
+    ("not", TyArrow(TyBool, TyBool))
+    ("neg", TyArrow(TyInt, TyInt))
 ]
+
+let gamma_scheme_env = 
+    gamma0 
+    |> List.map (fun (x, y) -> (x, Forall (Set.empty, y) ))
+
 
 let check_type t:ty = 
     match t with
         | TyInt -> TyInt
         | TyFloat -> TyFloat
+
 
 // TODO for exam
 let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
@@ -157,21 +181,14 @@ let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
         
     | App (e1, e2) ->
         let t1,s1 = typeinfer_expr env e1
-
         let env = apply_susbs_to_env s1 env
-
         let t2, s2 = typeinfer_expr env e2
-
         let fresh_var = get_fresh_variable ()
-        let t1 = apply_subst s2 t1
 
-        let s3 = unify t1 (TyArrow(t2,fresh_var))
-        
-        let t = apply_subst s3 fresh_var
-        let s_temp = compose_subst s3 s2
-        let s = compose_subst s_temp s1
+        let s3 = unify (apply_subst s2 t1) (TyArrow (t2, fresh_var))
+        let s1_s2_s3 = compose_subst s1 (compose_subst s2 s3)
+        apply_subst s1_s2_s3 fresh_var, s1_s2_s3
 
-        (apply_subst s3 fresh_var),s
 
 
     | IfThenElse (e1, e2, e3o) ->
@@ -196,30 +213,10 @@ let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
             let s8 = unify (apply_subst s7 t2) (apply_subst s7 t3)
             t3, compose_subst s8 s7
 
-    // Plus inference rule; final_type match is taken by type checking.
-    | BinOp (e1, ("+" | "-" | "/" | "%" | "*" as op), e2) ->
-        let t1, s1 = typeinfer_expr env e1
-        let s2 = unify t1 TyInt
-
-        let env = apply_susbs_to_env s2 env
-
-        let t2, s3 = typeinfer_expr env e2
-        let s4 = unify t2 TyInt
-
-        TyInt, List.fold ( fun z1 z2 -> compose_subst z1 z2 ) [] [s1; s2; s3; s4]
     
-    // Plus inference rule; final_type match is taken by type checking.
-    | BinOp (e1, ("<" | "<=" | ">" | ">=" | "=" | "<>" as op), e2) ->
-        let t1, s1 = typeinfer_expr env e1
-        let s2 = unify t1 TyInt
+    | BinOp (e1, op, e2) when 
+        (List.exists (fun (x, _) -> op = x) gamma0) -> typeinfer_expr env (App ((App (Var op, e1)), e2))
 
-        let env = apply_susbs_to_env s2 env
-
-        let t2, s3 = typeinfer_expr env e2
-        let s4 = unify t2 TyInt
-
-        TyBool, List.fold ( fun z1 z2 -> compose_subst z1 z2 ) [] [s1; s2; s3; s4]
-    
     | Let (x, tyo, e1, e2) ->
         let t1, s1 = typeinfer_expr env e1
         let sch = generalization env (apply_subst s1 t1)
@@ -229,16 +226,15 @@ let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
         | Some (t2_user) when t2_user <> t2 -> type_error "The expected type of this expression is %s but got instead %s"(pretty_ty t2_user) (pretty_ty t2)
         | _ -> t2, compose_subst s2 s1
     
-    
     |LetRec (f ,tyo, e1, e2) ->
         let fresh_var = get_fresh_variable()
-        let t1,s1  = typeinfer_expr ((f, Forall(Set.empty, fresh_var))::env) e1
+        let env = (f,Forall(Set.empty,fresh_var))::env
+        let t1,s1  = typeinfer_expr env e1
         match tyo with
         | Some (tyo) when t1 <> tyo -> type_error "let rec type mismatch: expected %s, but got %s" (pretty_ty tyo) (pretty_ty t1)
         | _ -> 
             let sch = generalization env (apply_subst s1 t1)
             let current_env = apply_susbs_to_env s1 env
-
             let t2,s2 = typeinfer_expr ((f,sch)::current_env) e2
             t2,s2 
 
@@ -257,7 +253,7 @@ let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
         TyTuple(List.rev(final_ts)), final_subst
 
         //failwithf "TyTuple error"
-
+    | _ -> unexpected_error "type infer: unsupported expression: %s [AST: %A]" (pretty_expr e) e
     (*
         current_sub = []
         t = []

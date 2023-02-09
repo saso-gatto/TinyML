@@ -10,7 +10,9 @@ open FSharp.Common
 open TinyML.Ast
 
 let parse_from_TextReader rd filename parser = Parsing.parse_from_TextReader SyntaxError rd filename (1, 1) parser Lexer.tokenize Parser.tokenTagToTokenId
-    
+
+let parse_from_string line filename parser = Parsing.parse_from_string SyntaxError line filename (1, 1) parser Lexer.tokenize Parser.tokenTagToTokenId
+
 let interpret_expr tenv venv e =
     #if DEBUG
     printfn "AST:\t%A\npretty:\t%s" e (pretty_expr e)
@@ -44,7 +46,8 @@ let main_interpreter filename =
 
 let main_interactive () =
     printfn "entering interactive mode..."
-    let mutable tenv = [] //Typing.gamma0
+    //let mutable tenv = [] //Typing.gamma0
+    let mutable tenv = Typing.gamma_scheme_env
     let mutable venv = []
     while true do
         trap <| fun () ->
