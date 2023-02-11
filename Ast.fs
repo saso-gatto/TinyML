@@ -127,7 +127,7 @@ let rec pretty_ty t =
         | (TyName _, TyArrow _) -> sprintf "%s -> (%s)" (pretty_ty t1) (pretty_ty t2)
         | (TyTuple _, TyArrow _) -> sprintf "%s -> (%s)" (pretty_ty t1) (pretty_ty t2)
         | (TyArrow _, TyArrow _) -> sprintf "(%s) -> (%s)" (pretty_ty t1) (pretty_ty t2)
-        | (_,_) -> sprintf "%s -> (%s)" (pretty_ty t1) (pretty_ty t2)
+        | (_,_) -> sprintf "%s -> %s" (pretty_ty t1) (pretty_ty t2)
 
     | TyVar n -> sprintf " '%d" n
     | TyTuple ts -> sprintf "(%s)" (pretty_tupled pretty_ty ts)
