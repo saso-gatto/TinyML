@@ -14,7 +14,7 @@ let last_free_var = 0
 
 let reset_fresh_variable () =
     var_counter <- 0
-    TyVar var_counter
+    //TyVar var_counter
 
 let get_fresh_variable () = 
     var_counter <- var_counter + 1

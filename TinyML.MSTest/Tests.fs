@@ -71,3 +71,48 @@ type TestClass () =
         let x,t,v = Evaluate.evaluate("let x = (1,\"Test TinyML\",5.0,true);;")
         let expected_type = TyTuple[TyInt;TyString;TyFloat;TyBool]
         Assert.AreEqual(t,expected_type)
+
+    [<TestMethod>]
+    member _.Test_Let_Int()=
+        let x,t,v = Evaluate.evaluate("let x = 5;;")
+        let expected_type = TyInt
+        Assert.AreEqual(t,expected_type)
+
+    [<TestMethod>]
+    member _.Test_Let_String()=
+        let x,t,v = Evaluate.evaluate("let x =\"Test_Let\";;")
+        let expected_type = TyString
+        Assert.AreEqual(t,expected_type)
+
+    [<TestMethod>]
+    member _.Test_Let_Float()=
+        let x,t,v = Evaluate.evaluate("let x = 5.0;;")
+        let expected_type = TyFloat
+        Assert.AreEqual(t,expected_type)
+
+    [<TestMethod>]
+    member _.Test_LetRec()=
+        Evaluate.reset_environment()
+        let x,t,v = Evaluate.evaluate("let rec f x = f x + 1;;")
+        let expected_type = TyArrow(TyVar 6,TyInt)
+        Assert.AreEqual(t,expected_type)
+
+    [<TestMethod>]
+    member _.Test_TupleInt()=
+        Evaluate.reset_environment()
+        let x,t,v = Evaluate.evaluate("fun x -> x + 1;;")
+        let expected_type = TyArrow(TyInt,TyInt)
+        Assert.AreEqual(t,expected_type)
+
+    [<TestMethod>]
+    member _.Test_High_Order_Function()=
+        Evaluate.reset_environment()
+        let x,t,v = Evaluate.evaluate("let f = fun x -> fun y -> if x>0 then y x else y (x+1);;")
+        let y = TyArrow(TyArrow(TyInt,TyVar 9),TyVar 9)
+        let expected_type = TyArrow(TyInt, y)
+        Assert.AreEqual(t,expected_type)
+
+    (*[<TestMethod>]
+    member _.Test_High_Order_Function()=
+        let x,t,v = Evaluate.evaluate("fun x y -> let swap (a, b) = (b, a) in swap (x, y);;")
+        *)

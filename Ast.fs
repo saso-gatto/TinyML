@@ -114,12 +114,24 @@ let pretty_env p env = sprintf "[%s]" (flatten (fun (x, o) -> sprintf "%s=%s" x 
 // print any tuple given a printer p for its elements
 let pretty_tupled p l = flatten p ", " l
 
+
 let rec pretty_ty t =
     match t with
     | TyName s -> s
-    | TyArrow (t1, t2) -> sprintf "%s -> %s" (pretty_ty t1) (pretty_ty t2)
+    | TyArrow (t1, t2) ->
+        match t1,t2 with
+        | (TyArrow _, TyVar _) -> sprintf "(%s) -> %s" (pretty_ty t1) (pretty_ty t2)
+        | (TyArrow _, TyName _) -> sprintf "(%s) -> %s" (pretty_ty t1) (pretty_ty t2)
+        | (TyArrow _, TyTuple _) -> sprintf "(%s) -> %s" (pretty_ty t1) (pretty_ty t2)
+        | (TyVar _, TyArrow _) -> sprintf "%s -> (%s)" (pretty_ty t1) (pretty_ty t2)
+        | (TyName _, TyArrow _) -> sprintf "%s -> (%s)" (pretty_ty t1) (pretty_ty t2)
+        | (TyTuple _, TyArrow _) -> sprintf "%s -> (%s)" (pretty_ty t1) (pretty_ty t2)
+        | (TyArrow _, TyArrow _) -> sprintf "(%s) -> (%s)" (pretty_ty t1) (pretty_ty t2)
+        | (_,_) -> sprintf "%s -> (%s)" (pretty_ty t1) (pretty_ty t2)
+
     | TyVar n -> sprintf " '%d" n
     | TyTuple ts -> sprintf "(%s)" (pretty_tupled pretty_ty ts)
+
 
 let pretty_lit lit =
     match lit with
