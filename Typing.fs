@@ -249,12 +249,11 @@ let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
         let final_ts, final_subst = List.fold (fun ((ts, s):ty list * subst) (e : expr) ->
                 let current_env = apply_susbs_to_env s env 
                 let ti, si = typeinfer_expr current_env e
+                let ts = List.map (fun t -> apply_subst si t) ts
                 let current_sub = compose_subst si s in ti::ts, current_sub) ([], []) es
         TyTuple(List.rev(final_ts)), final_subst
-
-        //failwithf "TyTuple error"
-    | _ -> unexpected_error "type infer: unsupported expression: %s [AST: %A]" (pretty_expr e) e
-    (*
+      
+   (*
         current_sub = []
         t = []
         for (i = 1; i<n; i++)
