@@ -10,7 +10,6 @@ open Ast
 let type_error fmt = throw_formatted TypeError fmt
 
 let mutable var_counter = 0
-let last_free_var = 0
 
 let reset_fresh_variable () =
     var_counter <- 0
@@ -22,37 +21,29 @@ let get_fresh_variable () =
 
 type subst = (tyvar * ty) list
 
-
+// The function apply_substs receives as parameters (s: a list of (tyvar*ty)) and (t: a type ty).
+// The function search recursively inside "s" the type to substitute.
 let rec apply_subst (s : subst) (t : ty): ty =
     match t with
     | TyName _ -> t
     | TyArrow (t1, t2) -> TyArrow (apply_subst s t1, apply_subst s t2)
     | TyVar tv ->
         try
-            let _, t1 = List.find (fun (tv1, _) -> tv1 = tv) s in t1
-        with _KeyNotFoundException -> t
+            let _, t1 = List.find (fun (tv1, _) -> tv1 = tv) s in t1            // /Alfa->t) belongs to sub
+        with _KeyNotFoundException -> t                                         //If alfa is not in s, we keep t
     | TyTuple ts -> TyTuple (List.map (apply_subst s) ts)
 
+// It composes two subst. s1 and s2 into a single substituion.
 let compose_subst (s1 : subst) (s2 : subst) : subst =
     let s1_applied = List.map (fun (y, x) -> (y, apply_subst s2 x)) s1
     let composed = List.append s1_applied s2
-    List.distinctBy fst composed
-
-    (*
-let replace var =
-    match var with
-    | var -> if var<> TyVar then var
-    | var -> remove list var 
-    list::new var
-
-let inside_subs t: scheme env =
-    match t with
-    | Forall(vars,t) -> Forall(var replace t)
+    List.distinctBy fst composed    //Remove of duplicates according to the type
 
 
-let apply_subst_to_env (subst: subst) (env : scheme env) : env =
-    List.map( fun (s, y) -> s inside_subs y) env *)
 
+// The function receives two parameter: a subst  and a scheme env.
+// The function use the map function to apply the substitution subs to each scheme of the environment
+// It updates the type t of scheme with the substitution subst, then it creates a new schem env with the new t computed before.
 let apply_susbs_to_env (subst: subst) (env : scheme env) : scheme env =
     List. map (fun (name, Forall (tvs,t)) -> 
         let temp = apply_subst subst t
@@ -60,51 +51,60 @@ let apply_susbs_to_env (subst: subst) (env : scheme env) : scheme env =
        ) env
     
 
-let refresh (t:tyvar): tyvar = t+1
- 
-
-(* get the set of free-type-variables in the type
-The ftv of a type are all the type vars appearing on the type.
-*)
-
+// Get the set of free-type-variables in the type. The ftv of a type are all the type vars appearing on the type.
 let rec freevars_ty t =
     match t with
-    | TyName s -> Set.empty
-    | TyArrow (t1, t2) -> (freevars_ty t1) + (freevars_ty t2)
-    | TyVar tv -> Set.singleton tv
-    | TyTuple ts -> List.fold (fun r t -> r + freevars_ty t) Set.empty ts
+    | TyName _ -> Set.empty //No free var
+    | TyArrow (t1, t2) -> (freevars_ty t1) + (freevars_ty t2)   //Cerca le free var in t1, t2 e poi unisce i due risultati
+    | TyVar tv -> Set.singleton tv //Ritorna solo tv
+    | TyTuple ts -> List.fold (fun r t -> r + freevars_ty t) Set.empty ts 
+    // For a tyTuple, the method uses fold to compute the set of freevars for each t in the tuple.
+    // It takes two param. in input: the accumulator and the current freevar of t
+    // At the end it returns the sets of freevars computed at each iteration
+
 
 let freevars_scheme (Forall (tvs, t)) = freevars_ty t - tvs
 
+
+// The method computes for each scheme contained in the environment its set of freevar.
+// Therefore, it returns the set of freevar of each scheme of the environment.
 let freevars_scheme_env env =
     List.fold (fun r (_, sch) -> r + freevars_scheme sch) Set.empty env
+    
 
+// Instantiation converts a type scheme into a type by refreshing its polymorphic type variables.
+// It is used to assign a fresh variable when a variable identifier is met in the VAR rule. 
 let inst (Forall (tvs, t)) : ty =
-    let free_vars = freevars_ty t
-    let vars_to_be_refresh = Set.intersect free_vars tvs
-    let sub =
-        vars_to_be_refresh
+    let free_vars = freevars_ty t                               // 1. Computation of set of freevars on the type of the scheme
+    let vars_to_be_refresh = Set.intersect free_vars tvs        // 2. Intersection between the set of universally quantified type variable and free vars.
+    let sub =                                                   // 3. This set of var is then transformed into a subst by mapping each vars into a a fresh variable
+        vars_to_be_refresh                              
         |> Set.toList
         |> List.map (fun v -> (v, (get_fresh_variable())))
-    apply_subst sub t
+    apply_subst sub t                                           // 4. Then it applies the substitution on the type of the scheme
 
+
+// Generalization promotes a type τ into a type scheme σ by quantifying type variables that represent
+// polymorphic types through the forall universal quantifier (∀):
 let generalization(env: scheme env) (t:ty) : scheme =
     let tvs = Set.difference(freevars_ty t) (freevars_scheme_env env)
     Forall(tvs,t) 
     
-// TODO implement this
+// The method unify takes two types t1 and t2 and produces the MGU, that is a subst which makes them equal
 let rec unify (t1 : ty) (t2 : ty) : subst = 
     match (t1,t2) with
-    | TyName s1, TyName s2 when s1 = s2 -> []
+    | TyName s1, TyName s2 when s1 = s2 -> []   
 
-    | TyVar tv,t
+    | TyVar tv,t                    //Substitution is symmetric, tv is the type var
     | t, TyVar tv -> [tv,t]
 
     | TyArrow(t1,t2), TyArrow(t3,t4) -> 
         let s = unify t1 t3
         in s @ (unify (apply_subst s t2) (apply_subst s t4)) //s is used to concatenate two lists
-        //compose_subst (unify t1 t3) (unify t2 t4)
+        // First it unifies the input of thet tpe arrows, then concatenates the substs computed before 
+        // with the output and it unifies the resulting part
 
+    // It iteratively unifies each pair of elements in the tuples and accumulate the resulting substitutions.
     | TyTuple ts1, TyTuple ts2 when List.length ts1 = List.length ts2 ->
         List.fold (fun s (t1,t2) -> compose_subst s (unify t1 t2)) [] (List.zip ts1 ts2)
     
@@ -130,9 +130,6 @@ let gamma0 = [
 
     ("and", TyArrow (TyBool, TyArrow(TyBool, TyBool)))
     ("or", TyArrow (TyBool, TyArrow(TyBool, TyBool)))
-
-    ("not", TyArrow(TyBool, TyBool))
-    ("neg", TyArrow(TyInt, TyInt))
 ]
 
 let gamma_scheme_env = 
@@ -156,7 +153,9 @@ let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
     | Lit (LChar _) -> TyChar, [] 
     | Lit LUnit -> TyUnit, []
 
-
+    // Var x: if x exists in the environment, it extracts its scheme.
+    // Then it uses the method inst on the scheme to obtain the type t'
+    // At the end it returns the type t' and the empty substitution
     | Var x -> 
         try
             let exists_type = fun(t,_) -> t = x
@@ -166,7 +165,10 @@ let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
             | _ -> failwithf"Error on Var X" 
 
     
+    // I have splitted the Lambda rule in two cases: 
+    // The first is when the type of x is specified and the second not.
 
+    // Case where x has no annotated type: we'll use a fresh variable as type of it
     | Lambda (x, None, e) ->
         let ty = get_fresh_variable()
         let te,se = typeinfer_expr ((x, Forall(Set.empty, ty)) :: env  ) e
@@ -178,7 +180,15 @@ let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
         let t1 = apply_subst se ty
         TyArrow (t1, te), se
 
-        
+
+
+    // Application case with two parameters
+    // 1. Type inference of first expression, obtain of t1,s1
+    // 2. The substitution computed before is applied on the environment for the second rule
+    // 3. Second rule: type inf. of t2,s2 by using the update environment and the second expression
+    // 4. Obtaining of a new fresh variable for the third rule
+    // 5. Unification of t1; t2->fresh_var
+    // 6. Composition of substitution and then use of apply_substs to get the final type
     | App (e1, e2) ->
         let t1,s1 = typeinfer_expr env e1
         let env = apply_susbs_to_env s1 env
@@ -191,6 +201,14 @@ let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
 
 
 
+    // If-Then-Else case
+    // 1. Inference of t1 and s1 and unification of t1 with TyBool
+    // 2. Composition of substitution to infer t2 and s4
+    // 3. E3o -> None | type error or TyUnit
+    // 4. E3o -> Some 
+    //    -> Apply subst to environment, composition of subst and 
+    //    -> type inference on e3 to get t3, s6
+    //    -> Unify to get t8, at the end return of t3 the final comp. of substs
     | IfThenElse (e1, e2, e3o) ->
         let t1, s1 = typeinfer_expr env e1
         let s3 = compose_subst s1 (unify t1 TyBool)
@@ -209,14 +227,17 @@ let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
             let env = apply_susbs_to_env s5 env
             let t3, s6 = typeinfer_expr env e3
             let s7 = compose_subst s5 s6
-            //if t2 <> t3 then type_error "type mismatch in if-then-else:  then branch has type %s and is different from else branch type %s" (pretty_ty t2) (pretty_ty t3)
             let s8 = unify (apply_subst s7 t2) (apply_subst s7 t3)
             t3, compose_subst s8 s7
 
     
-    | BinOp (e1, op, e2) when 
-        (List.exists (fun (x, _) -> op = x) gamma0) -> typeinfer_expr env (App ((App (Var op, e1)), e2))
-
+    
+    // Let rule: type inference of t1 and s1.
+    // Application of the substitution s1 to t1.
+    // Result type is then transformed into scheme by generalization method
+    // Extension of the environment with the new scheme and var
+    // Update of the environment by applying the substitution s1.
+    // Inference of t2 and s2 and return of t2, compose susbst s2 s1.
     | Let (x, tyo, e1, e2) ->
         let t1, s1 = typeinfer_expr env e1
         let sch = generalization env (apply_subst s1 t1)
@@ -226,6 +247,16 @@ let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
         | Some (t2_user) when t2_user <> t2 -> type_error "The expected type of this expression is %s but got instead %s"(pretty_ty t2_user) (pretty_ty t2)
         | _ -> t2, compose_subst s2 s1
     
+
+    // Let-Rec rule.
+    // First, the method gets a fresh variable to use for the first rule.
+    // The environment is first extended adding the f received as parameter and
+    // the scheme created using as type the new fresh var.
+    // Second, it infers the expression e1 and get t1,s1.
+    // If the optional type is not expressed
+    // Computation of the type scheme o1 by applying the method generalization.
+    // Update and extension of the environment to infer t2 and s2
+    // Return of t2 and s2
     |LetRec (f ,tyo, e1, e2) ->
         let fresh_var = get_fresh_variable()
         let env = (f,Forall(Set.empty,fresh_var))::env
@@ -243,23 +274,21 @@ let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
     // At each iteration, it requires Theta (i-1), and the current expression
     // It uses the method typeperf_expr to infer the type ti and the subst si.
     // The output has to be a t1*..*tn of types and the substs n.
-
     | Tuple es ->
-        
         let final_ts, final_subst = List.fold (fun ((ts, s):ty list * subst) (e : expr) ->
                 let current_env = apply_susbs_to_env s env 
                 let ti, si = typeinfer_expr current_env e
                 let ts = List.map (fun t -> apply_subst si t) ts
                 let current_sub = compose_subst si s in ti::ts, current_sub) ([], []) es
         TyTuple(List.rev(final_ts)), final_subst
+
+
+    // op indicates the operator to use with e1 and e2.
+    // If op exists, the method calls the typeinfer_expr treating the expression as application 
+    // In the class eval, there are the methods which express how to evaluate the expression expressed by op
+    | BinOp (e1, op, e2) when 
+        (List.exists (fun (x, _) -> op = x) gamma0) -> typeinfer_expr env (App ((App (Var op, e1)), e2))
       
-   (*
-        current_sub = []
-        t = []
-        for (i = 1; i<n; i++)
-            ti,si = typeinfer_expr(current_sub,e[i])
-            l.append(ti)
-            current_sub = compose_subst (current_sub, si) *)
 
 // type checker //
     

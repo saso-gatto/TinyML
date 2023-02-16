@@ -53,6 +53,7 @@ let (|TyUnit|_|) = (|TyLit|_|) "unit"
 
 // Declaration of type scheme
 // Forall is like a method which we call to build a scheme whose structure is a Set of type ty.
+// So, scheme is a tuple that containts a set of ty var and a type associated to it.
 type scheme = Forall of tyvar Set * ty
 
 type lit = LInt of int
@@ -133,6 +134,7 @@ let rec pretty_ty t =
     | TyTuple ts -> sprintf "(%s)" (pretty_tupled pretty_ty ts)
 
 
+
 let pretty_lit lit =
     match lit with
     | LInt n -> sprintf "%d" n
@@ -199,10 +201,7 @@ let rec pretty_expr e =
 let rec pretty_value v =
     match v with
     | VLit lit -> pretty_lit lit
-
     | VTuple vs -> pretty_tupled pretty_value vs
-
     | Closure (env, x, e) -> sprintf "<|%s;%s;%s|>" (pretty_env pretty_value env) x (pretty_expr e)
-    
     | RecClosure (env, f, x, e) -> sprintf "<|%s;%s;%s;%s|>" (pretty_env pretty_value env) f x (pretty_expr e)
     
